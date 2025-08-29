@@ -1,17 +1,58 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { supabase } from '../services/supabase'
 
 export default function Clientes() {
   const [clientes, setClientes] = useState([])
   const [productosDisponibles, setProductosDisponibles] = useState([])
-
   const navigate = useNavigate()
 
   useEffect(() => {
-    const storedClientes = JSON.parse(localStorage.getItem('clientes')) || []
-    const storedProductos = JSON.parse(localStorage.getItem('productos')) || []
-    setClientes(storedClientes)
-    setProductosDisponibles(storedProductos)
+    const fetchData = async () => {
+      // Traer todos los clientes
+      const { data: clientesData, error: clientesError } = await supabase
+        .from('clientes')
+        .select('*')
+      if (clientesError) {
+        console.error('Error al obtener clientes:', clientesError)
+        return
+      }
+
+      // Traer todos los productos
+      const { data: productosData, error: productosError } = await supabase
+        .from('productos')
+        .select('*')
+      if (productosError) {
+        console.error('Error al obtener productos:', productosError)
+        return
+      }
+      setProductosDisponibles(productosData)
+
+      // Traer relaciones cliente-productos
+      const { data: relaciones, error: relacionesError } = await supabase
+        .from('cliente_productos')
+        .select('*')
+      if (relacionesError) {
+        console.error('Error al obtener relaciones:', relacionesError)
+        return
+      }
+
+        console.log("Clientes:", clientesData)
+        console.log("Productos:", productosData)
+        console.log("Relaciones:", relaciones)
+
+      // Mapear productos asignados a cada cliente
+      const clientesConProductos = clientesData.map(cliente => {
+        const productosCliente = relaciones
+          .filter(rel => rel.cliente_id === cliente.id)
+          .map(rel => rel.producto_id)
+        return { ...cliente, productos: productosCliente }
+      })
+
+      setClientes(clientesConProductos)
+    }
+
+    fetchData()
   }, [])
 
   return (
@@ -26,9 +67,8 @@ export default function Clientes() {
         </button>
       </div>
 
-
       <div className="grid gap-4">
-        {clientes.map((cliente) => (
+        {clientes.map(cliente => (
           <div
             key={cliente.id}
             onClick={() => navigate(`/clientes/${cliente.id}`)}
@@ -40,13 +80,15 @@ export default function Clientes() {
             </div>
             <div className="text-sm text-gray-800">
               <strong>Productos:</strong>{' '}
-              {cliente.productos.length > 0 ? (
-                cliente.productos.map(
-                  pid => productosDisponibles.find(p => p.id === pid)?.nombre || 'Producto eliminado'
-                ).join(', ')
-              ) : (
-                <span className="text-gray-500">Sin productos asignados</span>
-              )}
+              {cliente.productos.length > 0
+                ? cliente.productos
+                    .map(
+                      pid =>
+                        productosDisponibles.find(p => p.id === pid)?.nombre ||
+                        'Producto eliminado'
+                    )
+                    .join(', ')
+                : <span className="text-gray-500">Sin productos asignados</span>}
             </div>
           </div>
         ))}
