@@ -3,6 +3,7 @@ import { Mail, User, Phone, Lock } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../services/supabase'
 import ModalPerfil from '../components/ModalPerfil'
+import Loader from '../components/Loader' // Importa tu Loader aquí
 
 export default function Perfil() {
   const [usuario, setUsuario] = useState({
@@ -15,14 +16,17 @@ export default function Perfil() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [isEditing, setIsEditing] = useState(false)
-  const [modalOpen, setModalOpen] = useState(false) 
+  const [modalOpen, setModalOpen] = useState(false)
   const navigate = useNavigate()
-
 
   useEffect(() => {
     const fetchUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
+      setLoading(true)
+      const { data: { user }, error } = await supabase.auth.getUser()
+      if (error) {
+        console.error(error)
+        navigate('/login')
+      } else if (user) {
         setUsuario({
           nombre: user.user_metadata?.full_name || '',
           email: user.email,
@@ -32,6 +36,7 @@ export default function Perfil() {
       } else {
         navigate('/login')
       }
+      setLoading(false)
     }
     fetchUser()
   }, [navigate])
@@ -47,7 +52,6 @@ export default function Perfil() {
     setSuccess('')
 
     try {
-      // Actualizar metadata
       const updates = { data: { full_name: usuario.nombre, telefono: usuario.telefono } }
       const { error: metaError } = await supabase.auth.updateUser(updates)
       if (metaError) throw metaError
@@ -73,10 +77,12 @@ export default function Perfil() {
     }
   }
 
-  if (!usuario.email) return <p className="p-6">Cargando perfil...</p>
+  if (!usuario.email) return <Loader />
 
   return (
-    <div className="space-y-8 p-6">
+    <div className="space-y-8 p-6 relative">
+      {loading && <Loader />} {/* Loader sobrepuesto mientras se guarda */}
+      
       <h1 className="text-3xl font-bold text-[#4f772d]">Perfil de Usuario</h1>
 
       <form onSubmit={handleUpdate} className="space-y-4 bg-gray-50 p-6 rounded-xl shadow w-full">
@@ -114,7 +120,7 @@ export default function Perfil() {
           </div>
         </div>
 
-        {/* Telefono */}
+        {/* Teléfono */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
           <div className="flex items-center border-b-2 border-gray-300">
@@ -130,7 +136,7 @@ export default function Perfil() {
           </div>
         </div>
 
-        {/* Contraseña solo en edicion */}
+        {/* Contraseña solo en edición */}
         {isEditing && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Nueva contraseña</label>
@@ -157,7 +163,7 @@ export default function Perfil() {
           {!isEditing ? (
             <button
               type="button"
-              onClick={() => setModalOpen(true)} 
+              onClick={() => setModalOpen(true)}
               className="bg-[#4f772d] text-white px-4 py-2 rounded hover:bg-[#3d5a1f] cursor-pointer transition-colors duration-200 ease-in-out"
             >
               Editar perfil
@@ -178,7 +184,6 @@ export default function Perfil() {
                   setIsEditing(false)
                   setError('')
                   setSuccess('')
-
                   supabase.auth.getUser().then(({ data: { user } }) => {
                     if (user) {
                       setUsuario({
