@@ -1,13 +1,14 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { Mail, User } from 'lucide-react'
+import { supabase } from '../services/supabase'
 import { generarPDFPerfilCliente } from '../utils/pdfPerfilCliente'
 
 export default function PerfilCliente() {
   const { id } = useParams()
   const navigate = useNavigate()
 
-  const [clientes, setClientes] = useState([])
+  // const [clientes, setClientes] = useState([])
   const [productos, setProductos] = useState([])
   const [form, setForm] = useState({ nombre: '', email: '', productos: [] })
   const [mostrarConfirmacionEliminar, setMostrarConfirmacionEliminar] = useState(false)
@@ -15,34 +16,118 @@ export default function PerfilCliente() {
   const [modoEdicion, setModoEdicion] = useState(false)
 
   useEffect(() => {
-    const storedClientes = JSON.parse(localStorage.getItem('clientes')) || []
-    const storedProductos = JSON.parse(localStorage.getItem('productos')) || []
-    const cliente = storedClientes.find(c => c.id === Number(id))
+    const fetchData = async () => {
+      setModoEdicion(false)
 
-    if (cliente) setForm(cliente)
+      const { data: clienteData, error: clienteError } = await supabase
+        .from('clientes')
+        .select('*')
+        .eq('id', Number(id))
+        .single()
+      
+      if (clienteError) {
+        console.error(clienteError)
+        return
+      }
 
-    setClientes(storedClientes)
-    setProductos(storedProductos)
+      const { data: productosData, error: productosError } = await supabase
+        .from('productos')
+        .select('*')
+      
+      if (productosError) console.error(productosError)
+
+      const { data: clienteProductos, error: clienteProdError } = await supabase
+        .from('cliente_productos')
+        .select('producto_id')
+        .eq('cliente_id', Number(id))
+      
+      if (clienteProdError) console.error(clienteProdError)
+
+      setForm({
+        ...clienteData,
+        productos: clienteProductos ? clienteProductos.map(cp => cp.producto_id) : []
+      })
+      
+      setProductos(productosData || [])
+    }
+
+    fetchData()
   }, [id])
 
-  const handleGuardar = () => {
-    const actualizados = clientes.map(c =>
-      c.id === Number(id) ? form : c
-    )
-    setClientes(actualizados)
-    localStorage.setItem('clientes', JSON.stringify(actualizados))
-    setModoEdicion(false)
-    setMostrarConfirmacionGuardado(true) // Mostrar modal guardado
+  const handleGuardar = async () => {
+  try {
+
+    const { error: updateError } = await supabase
+      .from('clientes')
+      .update({ nombre: form.nombre, email: form.email })
+      .eq('id', Number(id));
+
+    if (updateError) throw updateError;
+
+    const { error: delError } = await supabase
+      .from('cliente_productos')
+      .delete()
+      .eq('cliente_id', Number(id));
+
+    if (delError) throw delError;
+
+    console.log("Productos a insertar:", form.productos);
+    if (form.productos.length > 0) {
+      const asignaciones = form.productos.map(pid => ({
+        cliente_id: Number(id),
+        producto_id: Number(pid),
+      }));
+
+      const { error: insertError } = await supabase
+        .from('cliente_productos')
+        .insert(asignaciones);
+
+      if (insertError) throw insertError;
+      console.log("Nuevos productos asignados:", asignaciones);
+    } else {
+      console.log("No hay productos para asignar");
+    }
+
+    const { data: clienteProductos, error: clienteProdError } = await supabase
+      .from('cliente_productos')
+      .select('producto_id')
+      .eq('cliente_id', Number(id));
+
+    if (clienteProdError) throw clienteProdError;
+
+    setForm(prev => ({
+      ...prev,
+      productos: clienteProductos ? clienteProductos.map(cp => cp.producto_id) : []
+    }));
+
+    setModoEdicion(false);
+    setMostrarConfirmacionGuardado(true);
+
+  } catch (err) {
+    console.error(err);
+    alert('Error al actualizar el cliente');
   }
+};
+
 
   const cerrarModalGuardado = () => {
     setMostrarConfirmacionGuardado(false)
   }
 
-  const handleEliminar = () => {
-    const actualizados = clientes.filter(c => c.id !== Number(id))
-    localStorage.setItem('clientes', JSON.stringify(actualizados))
-    navigate('/clientes')
+  const handleEliminar = async () => {
+    try {
+      const { error } = await supabase
+        .from('clientes')
+        .delete()
+        .eq('id', Number(id))
+
+      if (error) throw error
+
+      navigate('/clientes')
+    } catch (err) {
+      console.error(err)
+      alert('Error al eliminar el cliente')
+    }
   }
 
   const handleRegresar = () => {
@@ -50,12 +135,18 @@ export default function PerfilCliente() {
   }
 
   const toggleProducto = (productoId) => {
-    const isSelected = form.productos.includes(productoId)
-    const nuevos = isSelected
-      ? form.productos.filter(pid => pid !== productoId)
-      : [...form.productos, productoId]
-    setForm({ ...form, productos: nuevos })
-  }
+  const isSelected = form.productos.includes(productoId)
+  const nuevos = isSelected
+    ? form.productos.filter(pid => pid !== productoId)
+    : [...form.productos, productoId]
+
+  setForm(prev => {
+    const nuevoForm = { ...prev, productos: nuevos }
+    console.log("Productos seleccionados ahora:", nuevoForm.productos)
+    return nuevoForm
+  })
+}
+
 
   const handleDescargarPDF = () => {
     const productosCliente = productos.filter(p => form.productos.includes(p.id))
@@ -166,7 +257,7 @@ export default function PerfilCliente() {
             <div>
               <h2 className="font-semibold mb-2">Productos asignados</h2>
               <ul className="list-disc list-inside text-gray-800 text-sm">
-                {form.productos.length > 0
+                {form.productos?.length > 0
                   ? form.productos.map(pid => (
                       <li key={pid}>
                         {productos.find(p => p.id === pid)?.nombre || 'Producto eliminado'}
