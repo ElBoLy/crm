@@ -1,59 +1,54 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../services/supabase'
+import Loader from '../components/Loader'
 
 export default function Clientes() {
   const [clientes, setClientes] = useState([])
   const [productosDisponibles, setProductosDisponibles] = useState([])
+  const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
 
   useEffect(() => {
     const fetchData = async () => {
+      setLoading(true)
+
       // Traer todos los clientes
       const { data: clientesData, error: clientesError } = await supabase
         .from('clientes')
         .select('*')
-      if (clientesError) {
-        console.error('Error al obtener clientes:', clientesError)
-        return
-      }
+      if (clientesError) console.error('Error al obtener clientes:', clientesError)
 
       // Traer todos los productos
       const { data: productosData, error: productosError } = await supabase
         .from('productos')
         .select('*')
-      if (productosError) {
-        console.error('Error al obtener productos:', productosError)
-        return
-      }
-      setProductosDisponibles(productosData)
+      if (productosError) console.error('Error al obtener productos:', productosError)
+      setProductosDisponibles(productosData || [])
 
       // Traer relaciones cliente-productos
       const { data: relaciones, error: relacionesError } = await supabase
         .from('cliente_productos')
         .select('*')
-      if (relacionesError) {
-        console.error('Error al obtener relaciones:', relacionesError)
-        return
-      }
-
-        console.log("Clientes:", clientesData)
-        console.log("Productos:", productosData)
-        console.log("Relaciones:", relaciones)
+      if (relacionesError) console.error('Error al obtener relaciones:', relacionesError)
 
       // Mapear productos asignados a cada cliente
-      const clientesConProductos = clientesData.map(cliente => {
-        const productosCliente = relaciones
+      const clientesConProductos = (clientesData || []).map(cliente => {
+        const productosCliente = (relaciones || [])
           .filter(rel => rel.cliente_id === cliente.id)
           .map(rel => rel.producto_id)
         return { ...cliente, productos: productosCliente }
       })
 
       setClientes(clientesConProductos)
+      setLoading(false)
     }
 
     fetchData()
   }, [])
+
+  // Mostrar Loader mientras carga
+  if (loading) return <Loader text="Cargando clientes..." />
 
   return (
     <div className="space-y-8 p-6">

@@ -1,37 +1,57 @@
 import { useEffect, useState } from 'react'
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { useNavigate } from 'react-router-dom'
-import { generarPDFDashboardDatos } from "../utils/pdfUtils";
+import { supabase } from '../services/supabase'
+import Loader from '../components/Loader'
+import { generarPDFDashboardDatos } from "../utils/pdfUtils"
 
 const COLORS = ['#4f772d', '#31572c', '#132a13', '#90a955', '#ecf39e']
 
 export default function Dashboard() {
   const [clientes, setClientes] = useState([])
   const [productos, setProductos] = useState([])
+  const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
 
   useEffect(() => {
-    const storedClientes = JSON.parse(localStorage.getItem('clientes')) || []
-    const storedProductos = JSON.parse(localStorage.getItem('productos')) || []
+    const fetchData = async () => {
+      setLoading(true)
 
-    setClientes(storedClientes)
-    setProductos(storedProductos)
+      // Traer todos los clientes
+      const { data: clientesData, error: clientesError } = await supabase
+        .from('clientes')
+        .select('*')
+      if (clientesError) console.error('Error al obtener clientes:', clientesError)
+
+      // Traer todos los productos
+      const { data: productosData, error: productosError } = await supabase
+        .from('productos')
+        .select('*')
+      if (productosError) console.error('Error al obtener productos:', productosError)
+
+      setClientes(clientesData || [])
+      setProductos(productosData || [])
+      setLoading(false)
+    }
+
+    fetchData()
   }, [])
 
-  // Clientes asignado cada producto
-  const contarClientesPorProducto = (productoId) => {
-    return clientes.filter(cliente => cliente.productos?.includes(productoId)).length
-  }
+  if (loading) return <Loader text="Cargando dashboard..." />
 
-  // Pastel: cantidad total de asignaciones de productos
-  const dataGrafica = productos.map((producto) => ({
-    name: producto.nombre,
-    value: contarClientesPorProducto(producto.id),
-  })).filter(item => item.value > 0)
+  // Clientes asignados a cada producto
+  const contarClientesPorProducto = (productoId) =>
+    clientes.filter(cliente => cliente.productos?.includes(productoId)).length
 
-  const clientesRecientes = [...clientes]
-    .sort((a, b) => b.id - a.id)
-    .slice(0, 3)
+  // Datos para gráfico pastel
+  const dataGrafica = productos
+    .map(producto => ({
+      name: producto.nombre,
+      value: contarClientesPorProducto(producto.id),
+    }))
+    .filter(item => item.value > 0)
+
+  const clientesRecientes = [...clientes].sort((a, b) => b.id - a.id).slice(0, 3)
 
   return (
     <div id="dashboard-container" className="p-6 space-y-6">
