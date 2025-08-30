@@ -1,21 +1,38 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { Tag, FileText, DollarSign, Image } from 'lucide-react'
+import { supabase } from '../services/supabase'
+import Loader from '../components/Loader'
 
 export default function PerfilProducto() {
   const { id } = useParams()
   const navigate = useNavigate()
 
-  const [productos, setProductos] = useState([])
   const [producto, setProducto] = useState(null)
+  const [loading, setLoading] = useState(true)
   const [editando, setEditando] = useState(false)
 
   useEffect(() => {
-    const storedProductos = JSON.parse(localStorage.getItem('productos')) || []
-    setProductos(storedProductos)
+    const fetchProducto = async () => {
+      try {
+        setLoading(true)
+        const { data, error } = await supabase
+          .from('productos')
+          .select('*')
+          .eq('id', id)
+          .single() // Trae solo un producto
 
-    const encontrado = storedProductos.find(p => p.id === Number(id))
-    setProducto(encontrado || null)
+        if (error) throw error
+        setProducto(data)
+      } catch (err) {
+        console.error(err)
+        setProducto(null)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchProducto()
   }, [id])
 
   const handleInput = (e) => {
@@ -23,14 +40,31 @@ export default function PerfilProducto() {
     setProducto({ ...producto, [name]: value })
   }
 
-  const guardarCambios = () => {
-    const actualizados = productos.map(p =>
-      p.id === producto.id ? producto : p
-    )
-    setProductos(actualizados)
-    localStorage.setItem('productos', JSON.stringify(actualizados))
-    setEditando(false)
+  const guardarCambios = async () => {
+    try {
+      setLoading(true)
+      const { data, error } = await supabase
+        .from('productos')
+        .update({
+          nombre: producto.nombre,
+          descripcion: producto.descripcion,
+          precio: Number(producto.precio),
+          imagen: producto.imagen
+        })
+        .eq('id', producto.id)
+        .select()
+
+      if (error) throw error
+      setProducto(data[0])
+      setEditando(false)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
   }
+
+  if (loading) return <Loader />
 
   if (!producto) {
     return (
@@ -48,7 +82,6 @@ export default function PerfilProducto() {
 
   return (
     <div className="p-6 max-w-2xl mx-auto">
-      {/* Título principal */}
       <h1 className="text-3xl font-bold mb-6 text-gray-800">Perfil del producto</h1>
 
       <div className="bg-white p-6 rounded-lg shadow border border-gray-200">
@@ -60,7 +93,7 @@ export default function PerfilProducto() {
 
         {editando ? (
           <div className="space-y-6">
-            {/* Nombre */}
+            {/* Campos editables */}
             <div className="flex items-center">
               <Tag className="w-5 h-5 mr-3 text-gray-500" />
               <input
@@ -72,7 +105,6 @@ export default function PerfilProducto() {
               />
             </div>
 
-            {/* Descripción */}
             <div className="flex items-center">
               <FileText className="w-5 h-5 mr-3 text-gray-500" />
               <input
@@ -84,7 +116,6 @@ export default function PerfilProducto() {
               />
             </div>
 
-            {/* Precio */}
             <div className="flex items-center">
               <DollarSign className="w-5 h-5 mr-3 text-gray-500" />
               <input
@@ -97,7 +128,6 @@ export default function PerfilProducto() {
               />
             </div>
 
-            {/* Imagen */}
             <div className="flex items-center">
               <Image className="w-5 h-5 mr-3 text-gray-500" />
               <input
@@ -109,7 +139,6 @@ export default function PerfilProducto() {
               />
             </div>
 
-            {/* Botones en modo edición */}
             <div className="flex justify-between mt-4">
               <button
                 onClick={guardarCambios}
@@ -133,7 +162,6 @@ export default function PerfilProducto() {
               ${producto.precio}
             </p>
 
-            {/* Botones en modo lectura */}
             <div className="flex justify-between">
               <button
                 onClick={() => setEditando(true)}

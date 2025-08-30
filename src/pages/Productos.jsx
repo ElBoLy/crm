@@ -1,38 +1,74 @@
 import { useState, useEffect } from 'react'
 import { Tag, FileText, DollarSign, Image } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { supabase } from '../services/supabase'
+import Loader from '../components/Loader'
 
 export default function Productos() {
   const [productos, setProductos] = useState([])
   const [nuevo, setNuevo] = useState({ nombre: '', descripcion: '', precio: '', imagen: '' })
+  const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
 
+  // Traer productos de Supabase
   useEffect(() => {
-    const storedProductos = JSON.parse(localStorage.getItem('productos')) || []
-    setProductos(storedProductos)
-  }, [])
+    const fetchProductos = async () => {
+      try {
+        setLoading(true)
+        const { data, error } = await supabase.from('productos').select('*')
+        if (error) throw error
+        setProductos(data)
+      } catch (err) {
+        console.error(err)
+      } finally {
+        setLoading(false)
+      }
+    }
 
-  useEffect(() => {
-    localStorage.setItem('productos', JSON.stringify(productos))
-  }, [productos])
+    fetchProductos()
+  }, [])
 
   const handleInput = (e) => {
     const { name, value } = e.target
     setNuevo({ ...nuevo, [name]: value })
   }
 
-  const agregarProducto = () => {
-    if (!nuevo.nombre || !nuevo.precio) return
-    setProductos([...productos, { ...nuevo, id: Date.now() }])
-    setNuevo({ nombre: '', descripcion: '', precio: '', imagen: '' })
+  const agregarProducto = async () => {
+    if (!nuevo.nombre || !nuevo.precio || !nuevo.imagen) return // Verifica que haya imagen
+    try {
+      setLoading(true)
+      const { data, error } = await supabase
+        .from('productos')
+        .insert([{ ...nuevo, precio: Number(nuevo.precio) }])
+        .select()
+
+      if (error) throw error
+      setProductos([...productos, ...data])
+      setNuevo({ nombre: '', descripcion: '', precio: '', imagen: '' })
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const eliminarProducto = (id) => {
-    setProductos(productos.filter(p => p.id !== id))
+  const eliminarProducto = async (id) => {
+    try {
+      setLoading(true)
+      const { error } = await supabase.from('productos').delete().eq('id', id)
+      if (error) throw error
+      setProductos(productos.filter(p => p.id !== id))
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
   }
+
+  if (loading) return <Loader />
 
   return (
-    <div className="p-6">
+    <div className="p-6 relative">
       <h1 className="text-3xl font-bold mb-4 text-[#4f772d]">Productos</h1>
 
       {/* Formulario */}
@@ -71,6 +107,7 @@ export default function Productos() {
           />
         </div>
 
+        {/* URL de la imagen */}
         <div className="flex items-center border rounded px-3 py-2 border-gray-300 shadow bg-white">
           <Image className="w-4 h-4 mr-2 text-gray-500" />
           <input
@@ -103,10 +140,10 @@ export default function Productos() {
             <p className="text-sm text-gray-600">{producto.descripcion}</p>
             <p className="text-green-700 font-semibold mt-2">${producto.precio}</p>
 
-            <div className="mt-4 flex justify-between ">
+            <div className="mt-4 flex justify-between">
               <button
                 onClick={() => navigate(`/productos/${producto.id}`)}
-                className="px-3 py-1 text-sm bg-[#4f772d] text-white rounded hover:bg-[#3d5a1f] cursor-pointer transition-colors duration-300 ease-in-out "
+                className="px-3 py-1 text-sm bg-[#4f772d] text-white rounded hover:bg-[#3d5a1f] cursor-pointer transition-colors duration-300 ease-in-out"
               >
                 Ver Producto
               </button>
