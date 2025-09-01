@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid, Cell } from 'recharts'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../services/supabase'
 import Loader from '../components/Loader'
@@ -10,6 +10,7 @@ const COLORS = ['#4f772d', '#31572c', '#132a13', '#90a955', '#ecf39e']
 export default function Dashboard() {
   const [clientes, setClientes] = useState([])
   const [productos, setProductos] = useState([])
+  const [clienteProductos, setClienteProductos] = useState([])
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
 
@@ -17,20 +18,27 @@ export default function Dashboard() {
     const fetchData = async () => {
       setLoading(true)
 
-      // Traer todos los clientes
+      // clientes
       const { data: clientesData, error: clientesError } = await supabase
         .from('clientes')
         .select('*')
       if (clientesError) console.error('Error al obtener clientes:', clientesError)
 
-      // Traer todos los productos
+      // productos
       const { data: productosData, error: productosError } = await supabase
         .from('productos')
         .select('*')
       if (productosError) console.error('Error al obtener productos:', productosError)
 
+      // relaciones cliente-producto
+      const { data: clienteProductosData, error: cpError } = await supabase
+        .from('cliente_productos')
+        .select('*')
+      if (cpError) console.error('Error al obtener relaciones cliente-productos:', cpError)
+
       setClientes(clientesData || [])
       setProductos(productosData || [])
+      setClienteProductos(clienteProductosData || [])
       setLoading(false)
     }
 
@@ -39,11 +47,10 @@ export default function Dashboard() {
 
   if (loading) return <Loader text="Cargando dashboard..." />
 
-  // Clientes asignados a cada producto
+  // contar clientes por producto
   const contarClientesPorProducto = (productoId) =>
-    clientes.filter(cliente => cliente.productos?.includes(productoId)).length
+    clienteProductos.filter(cp => cp.producto_id === productoId).length
 
-  // Datos para gráfico pastel
   const dataGrafica = productos
     .map(producto => ({
       name: producto.nombre,
@@ -56,6 +63,8 @@ export default function Dashboard() {
   return (
     <div id="dashboard-container" className="p-6 space-y-6">
       <h1 className="text-3xl font-bold mb-6 text-[#4f772d]">Panel de Control</h1>
+
+      {/* Sección superior: totales + lista clientes por producto */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Total clientes */}
         <div className="p-6 rounded-lg shadow bg-white border border-gray-200">
@@ -87,7 +96,33 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+      {/* Gráfica de barras */}
+      <div className="p-6 rounded-lg shadow bg-white border border-gray-200 mt-8">
+        <h2 className="text-xl font-semibold mb-4">Distribución de Productos por Cliente</h2>
+        {dataGrafica.length === 0 ? (
+          <p className="text-gray-500">No hay datos para mostrar.</p>
+        ) : (
+          <div id="grafica-barras" style={{ width: '100%', height: 300 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={dataGrafica}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" reversed /> {/* <-- Aquí el cambio */}
+                <YAxis allowDecimals={false} />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="value" fill="#4f772d">
+                  {dataGrafica.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+
+      {/* Sección inferior: clientes recientes + accesos rápidos */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
         {/* Clientes recientes */}
         <div className="p-6 rounded-lg shadow bg-white border border-gray-200">
           <h2 className="text-xl font-semibold mb-4">Clientes Recientes</h2>
@@ -105,35 +140,7 @@ export default function Dashboard() {
           )}
         </div>
 
-        <div className="p-6 rounded-lg shadow bg-white border border-gray-200">
-          <h2 className="text-xl font-semibold mb-4">Distribución de Productos por Cliente</h2>
-          {dataGrafica.length === 0 ? (
-            <p className="text-gray-500">No hay datos para mostrar.</p>
-          ) : (
-            <div id="grafica-pastel" style={{ width: '100%', height: 250 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={dataGrafica}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={80}
-                    label
-                  >
-                    {dataGrafica.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend verticalAlign="bottom" height={36} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </div>
-
+        {/* Accesos rápidos */}
         <div className="p-6 rounded-lg shadow bg-white border border-gray-200 flex flex-col space-y-4">
           <h2 className="text-xl font-semibold mb-4">Accesos Rápidos</h2>
           <button
@@ -143,19 +150,20 @@ export default function Dashboard() {
             Ver Productos
           </button>
           <button
-            onClick={() => navigate('/agregar-cliente')} 
+            onClick={() => navigate('/agregar-cliente')}
             className="bg-[#4f772d] text-white py-2 rounded hover:bg-[#3d5a1f] transition"
           >
             Agregar Cliente
           </button>
           <button
-          onClick={() => generarPDFDashboardDatos(clientes, productos)}
-          className="bg-[#4f772d] text-white py-2 rounded hover:bg-[#3d5a1f] transition"
-        >
-          Descargar PDF
-        </button>
+            onClick={() => generarPDFDashboardDatos(clientes, productos, clienteProductos)}
+            className="bg-[#4f772d] text-white py-2 rounded hover:bg-[#3d5a1f] transition"
+          >
+            Descargar PDF
+          </button>
         </div>
       </div>
     </div>
+
   )
 }
